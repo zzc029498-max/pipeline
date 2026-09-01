@@ -1,11 +1,11 @@
 # FrameForge Pipeline
 
 A deliberately small, production-minded **3D asset validation and publishing pipeline**.
-It is designed as a portfolio project for an animation pipeline engineering role: the
-interesting part is not a giant UI, but a clean boundary between artist tools and reliable
-pipeline logic.
+FrameForge explores a simple idea: artist tools should feel lightweight while the machinery
+behind them stays predictable, traceable, and safe. Its focus is the clean boundary between
+the creative workflow and reliable pipeline logic.
 
-## What it demonstrates
+## Features
 
 - **Python + PyQt6:** responsive artist-facing UI; validation runs off the UI thread.
 - **3D pipeline awareness:** scene/texture discovery, naming policy and render-format hints.
