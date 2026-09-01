@@ -1,17 +1,30 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-from PyQt6.QtCore import QObject, QRunnable, Qt, QThreadPool, pyqtSignal
+from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
-    QApplication, QFileDialog, QFormLayout, QHBoxLayout, QHeaderView, QLabel,
-    QLineEdit, QMainWindow, QMessageBox, QPushButton, QTableWidget,
-    QTableWidgetItem, QVBoxLayout, QWidget,
+    QApplication,
+    QFileDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
-from .models import Asset, Finding, Severity
+from .models import Asset, Finding, PublishResult, Severity
 from .service import PipelineService
 
 
@@ -21,7 +34,7 @@ class WorkerSignals(QObject):
 
 
 class Task(QRunnable):
-    def __init__(self, operation) -> None:
+    def __init__(self, operation: Callable[[], Any]) -> None:
         super().__init__()
         self.operation = operation
         self.signals = WorkerSignals()
@@ -54,6 +67,8 @@ class MainWindow(QMainWindow):
         self.publish_button = QPushButton("Publish")
         self.publish_button.setEnabled(False)
         self._build_layout()
+        for field in (self.source, self.project, self.kind, self.name, self.root):
+            field.textChanged.connect(self.mark_validation_stale)
         self.validate_button.clicked.connect(self.validate)
         self.publish_button.clicked.connect(self.publish)
 
@@ -83,7 +98,9 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         panel.setLayout(layout)
         self.setCentralWidget(panel)
-        self.setStyleSheet("QWidget { background:#17202a; color:#eef2f3; } QLineEdit, QTableWidget { background:#22303c; padding:6px; } QPushButton { background:#386fa4; padding:8px 16px; border-radius:4px; }")
+        self.setStyleSheet(
+            "QWidget { background:#17202a; color:#eef2f3; } QLineEdit, QTableWidget { background:#22303c; padding:6px; } QPushButton { background:#386fa4; padding:8px 16px; border-radius:4px; }"
+        )
 
     def browse(self) -> None:
         selected = QFileDialog.getExistingDirectory(self, "Choose asset source")
@@ -91,9 +108,15 @@ class MainWindow(QMainWindow):
             self.source.setText(selected)
 
     def asset(self) -> Asset:
-        return Asset(self.project.text(), self.kind.text(), self.name.text(), Path(self.source.text()))
+        return Asset(
+            self.project.text(), self.kind.text(), self.name.text(), Path(self.source.text())
+        )
 
-    def run_task(self, operation, done) -> None:
+    def mark_validation_stale(self) -> None:
+        self.publish_button.setEnabled(False)
+        self.status.setText("Validate changes before publishing")
+
+    def run_task(self, operation: Callable[[], Any], done: Callable[[Any], None]) -> None:
         self.validate_button.setEnabled(False)
         self.publish_button.setEnabled(False)
         self.status.setText("Working…")
@@ -125,7 +148,7 @@ class MainWindow(QMainWindow):
         service = PipelineService(Path(self.root.text()))
         self.run_task(lambda: service.publish(asset), self.published)
 
-    def published(self, result) -> None:
+    def published(self, result: PublishResult) -> None:
         self.validate_button.setEnabled(True)
         self.publish_button.setEnabled(True)
         self.status.setText(f"Published v{result.version:03d}")

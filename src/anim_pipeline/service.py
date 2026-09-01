@@ -1,31 +1,41 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 
-from .models import Asset, Finding, PublishResult
+from .errors import ValidationRejected
+from .models import Asset, Finding, PublishRequest, PublishResult
 from .publisher import Publisher
 from .validator import Validator
 
 
 class PipelineService:
-    def __init__(self, publish_root: Path) -> None:
-        self.validator = Validator()
-        self.publisher = Publisher(publish_root)
+    def __init__(
+        self,
+        publish_root: Path | None = None,
+        *,
+        validator: Validator | None = None,
+        publisher: Publisher | None = None,
+    ) -> None:
+        if publisher is None:
+            if publish_root is None:
+                raise TypeError("publish_root is required when publisher is not provided")
+            publisher = Publisher(publish_root)
+        self.validator = validator or Validator()
+        self.publisher = publisher
 
     def inspect(self, asset: Asset) -> list[Finding]:
         return self.validator.validate(asset)
 
     def publish(self, asset: Asset, comment: str = "") -> PublishResult:
-        preflight = self.inspect(asset)
+        request = PublishRequest.from_asset(asset, comment)
+        preflight = self.validator.validate(request)
         if not self.validator.can_publish(preflight):
-            messages = "; ".join(f.message for f in preflight if f.severity.value == "error")
-            raise ValueError(f"Publish blocked: {messages}")
+            raise ValidationRejected(preflight)
 
         def validate_payload(payload: Path) -> None:
-            findings = self.inspect(replace(asset, source=payload))
+            staged_request = PublishRequest(request.asset, payload, request.comment)
+            findings = self.validator.validate(staged_request)
             if not self.validator.can_publish(findings):
-                messages = "; ".join(f.message for f in findings if f.severity.value == "error")
-                raise ValueError(f"Publish blocked: {messages}")
+                raise ValidationRejected(findings)
 
-        return self.publisher.publish(asset, comment, payload_check=validate_payload)
+        return self.publisher.publish(request, payload_check=validate_payload)

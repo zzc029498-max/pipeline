@@ -4,9 +4,11 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from anim_pipeline.errors import ValidationRejected
 from anim_pipeline.models import Asset, Severity
 from anim_pipeline.publisher import Publisher
 from anim_pipeline.service import PipelineService
+from anim_pipeline.validator import Validator
 
 
 def make_asset(tmp_path: Path, name: str = "red_panda") -> Asset:
@@ -41,6 +43,22 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(service.publish(asset).version, 1)
         self.assertEqual(service.publish(asset).version, 2)
 
+    def test_version_allocation_supports_more_than_three_digits(self) -> None:
+        asset = make_asset(self.root)
+        asset_root = self.root / "published" / "movie" / "character" / "red_panda"
+        asset_root.mkdir(parents=True)
+        (asset_root / "v1000").mkdir()
+        result = PipelineService(self.root / "published").publish(asset)
+        self.assertEqual(result.version, 1001)
+
+    def test_explicit_empty_rule_set_is_allowed(self) -> None:
+        missing = Asset("movie", "character", "red_panda", self.root / "missing")
+        service = PipelineService(
+            self.root / "published",
+            validator=Validator(rules=[]),
+        )
+        self.assertEqual(service.inspect(missing), [])
+
     def test_concurrent_publishes_get_unique_versions(self) -> None:
         asset = make_asset(self.root)
         service = PipelineService(self.root / "published")
@@ -53,8 +71,9 @@ class PipelineTests(unittest.TestCase):
         service = PipelineService(self.root / "published")
         findings = service.inspect(asset)
         self.assertTrue(any(f.severity == Severity.ERROR for f in findings))
-        with self.assertRaisesRegex(ValueError, "snake_case"):
+        with self.assertRaisesRegex(ValidationRejected, "snake_case") as raised:
             service.publish(asset)
+        self.assertEqual(raised.exception.findings, tuple(findings))
 
     def test_failed_validation_removes_staging_directory(self) -> None:
         asset = make_asset(self.root, "Red Panda")
