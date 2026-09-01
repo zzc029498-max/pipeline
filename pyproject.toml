@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "frameforge-pipeline"
+version = "0.1.0"
+description = "A compact animation asset validation and publishing pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+gui = ["PyQt6>=6.6"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+frameforge = "anim_pipeline.cli:main"
+frameforge-gui = "anim_pipeline.gui:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/anim_pipeline"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
