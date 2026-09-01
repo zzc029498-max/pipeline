@@ -1,9 +1,11 @@
 import json
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from anim_pipeline.models import Asset, Severity
+from anim_pipeline.publisher import Publisher
 from anim_pipeline.service import PipelineService
 
 
@@ -39,6 +41,13 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(service.publish(asset).version, 1)
         self.assertEqual(service.publish(asset).version, 2)
 
+    def test_concurrent_publishes_get_unique_versions(self) -> None:
+        asset = make_asset(self.root)
+        service = PipelineService(self.root / "published")
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            versions = list(pool.map(lambda _: service.publish(asset).version, range(4)))
+        self.assertEqual(sorted(versions), [1, 2, 3, 4])
+
     def test_bad_name_blocks_publish(self) -> None:
         asset = make_asset(self.root, "Red Panda")
         service = PipelineService(self.root / "published")
@@ -46,6 +55,19 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(any(f.severity == Severity.ERROR for f in findings))
         with self.assertRaisesRegex(ValueError, "snake_case"):
             service.publish(asset)
+
+    def test_failed_validation_removes_staging_directory(self) -> None:
+        asset = make_asset(self.root, "Red Panda")
+        publish_root = self.root / "published"
+        with self.assertRaises(ValueError):
+            PipelineService(publish_root).publish(asset)
+        asset_root = publish_root / "movie" / "character" / "Red Panda"
+        self.assertEqual(list(asset_root.glob(".publishing-*")), [])
+
+    def test_publisher_rejects_destination_outside_root(self) -> None:
+        asset = make_asset(self.root, "../../../../escaped")
+        with self.assertRaisesRegex(ValueError, "escapes the publish root"):
+            Publisher(self.root / "published").publish(asset)
 
 
 if __name__ == "__main__":
